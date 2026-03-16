@@ -1,17 +1,38 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { Auth, getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import firebaseConfig from './firebase-applet-config.json';
 
+const firebaseApiKeyEncoded = process.env.NEXT_PUBLIC_FIREBASE_API_KEY_B64;
+
+if (!firebaseApiKeyEncoded) {
+  throw new Error('Missing NEXT_PUBLIC_FIREBASE_API_KEY_B64 environment variable.');
+}
+
+const firebaseApiKey =
+  typeof window === 'undefined'
+    ? Buffer.from(firebaseApiKeyEncoded, 'base64').toString('utf-8').trim()
+    : atob(firebaseApiKeyEncoded).trim();
+
 // Initialize Firebase SDK
 const app = initializeApp({
   ...firebaseConfig,
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || firebaseConfig.apiKey,
+  apiKey: firebaseApiKey,
 });
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
-export const auth = typeof window !== 'undefined' ? getAuth(app) : null;
 export const storage = getStorage(app);
+
+let authInstance: Auth | null = null;
+export function getClientAuth(): Auth {
+  if (typeof window === 'undefined') {
+    throw new Error('Firebase Auth is only available in the browser.');
+  }
+  if (!authInstance) {
+    authInstance = getAuth(app);
+  }
+  return authInstance;
+}
 
 export enum OperationType {
   CREATE = 'create',
@@ -42,15 +63,19 @@ export interface FirestoreErrorInfo {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const currentUser =
+    typeof window !== 'undefined'
+      ? getClientAuth().currentUser
+      : undefined;
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
-      userId: auth?.currentUser?.uid,
-      email: auth?.currentUser?.email,
-      emailVerified: auth?.currentUser?.emailVerified,
-      isAnonymous: auth?.currentUser?.isAnonymous,
-      tenantId: auth?.currentUser?.tenantId,
-      providerInfo: auth?.currentUser?.providerData.map(provider => ({
+      userId: currentUser?.uid,
+      email: currentUser?.email,
+      emailVerified: currentUser?.emailVerified,
+      isAnonymous: currentUser?.isAnonymous,
+      tenantId: currentUser?.tenantId,
+      providerInfo: currentUser?.providerData.map(provider => ({
         providerId: provider.providerId,
         displayName: provider.displayName,
         email: provider.email,
