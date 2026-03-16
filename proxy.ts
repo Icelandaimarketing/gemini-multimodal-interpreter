@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import type { NextProxy, ProxyConfig } from 'next/server';
 
-export function middleware(request: NextRequest) {
+export const proxy: NextProxy = function (request: NextRequest) {
   const response = NextResponse.next();
 
   // Add security and proxy headers
@@ -27,9 +28,9 @@ export function middleware(request: NextRequest) {
   }
 
   return response;
-}
+};
 
-export const config = {
+export const config: ProxyConfig = {
   matcher: [
     /*
      * Match all request paths except for the ones starting with:
