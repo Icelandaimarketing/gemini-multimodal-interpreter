@@ -1,0 +1,122 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: sign_languages
+    // Fields: name (string), code (string), region (string)
+    //
+    // Collection: sign_languages/{langId}/signs
+    // Fields: gloss (string), videoUrl (string), imageUrl (string), description (string), dialect (string), status (string)
+    //
+    // Collection: corrections
+    // Fields: userId (string), originalGloss (string), correctedGloss (string), videoUrl (string), landmarks (string), status (string), signLanguage (string), timestamp (number)
+    //
+    // Collection: users
+    // Fields: uid (string), displayName (string), email (string), preferredLanguage (string), role (string)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "deddi83@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['uid', 'displayName', 'email', 'preferredLanguage', 'role']) &&
+             data.uid is string && data.uid.size() > 0 &&
+             data.email is string && isValidEmail(data.email) &&
+             data.role in ['user', 'admin'];
+    }
+
+    function isValidSignLanguage(data) {
+      return hasOnlyAllowedFields(['name', 'code', 'region']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.code is string && data.code.size() > 0 && data.code.size() < 10;
+    }
+
+    function isValidSign(data) {
+      return hasOnlyAllowedFields(['gloss', 'videoUrl', 'imageUrl', 'description', 'dialect', 'status']) &&
+             data.gloss is string && data.gloss.size() > 0 && data.gloss.size() < 50 &&
+             (!('videoUrl' in data) || (data.videoUrl is string && data.videoUrl.size() < 1000)) &&
+             (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() < 1000)) &&
+             (!('status' in data) || data.status in ['verified', 'pending', 'rejected']);
+    }
+
+    function isValidCorrection(data) {
+      return hasOnlyAllowedFields(['userId', 'originalGloss', 'correctedGloss', 'videoUrl', 'landmarks', 'status', 'signLanguage', 'timestamp']) &&
+             data.userId == request.auth.uid &&
+             data.correctedGloss is string && data.correctedGloss.size() > 0 &&
+             data.status == 'pending' &&
+             data.timestamp is number;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == 'user';
+      allow update: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && 
+                    (request.resource.data.role == resource.data.role || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /sign_languages/{langId} {
+      allow read: if true; // Publicly readable for the app to function
+      allow write: if isAdmin() && isValidSignLanguage(request.resource.data);
+
+      match /signs/{signId} {
+        allow read: if true;
+        allow write: if isAdmin() && isValidSign(request.resource.data);
+      }
+    }
+
+    match /interactions/{interactionId} {
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow read, update: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    match /corrections/{correctionId} {
+      allow create: if isAuthenticated() && isValidCorrection(request.resource.data);
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow update: if isAdmin(); // Only admins can approve/reject
+      allow delete: if isAdmin();
+    }
+
+    // Default deny
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

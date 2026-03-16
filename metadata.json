@@ -1,0 +1,9 @@
+{
+  "name": "Omni-Bridge: Multimodal Interpreter",
+  "description": "A high-performance editorial-grade interpreter bridging Sign Language and speech using Gemini Live API with real-time dialect adaptation.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}

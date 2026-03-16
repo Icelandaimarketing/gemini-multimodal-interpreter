@@ -1,0 +1,132 @@
+{
+  "entities": {
+    "SignLanguage": {
+      "title": "Sign Language",
+      "description": "A specific regional sign language (e.g., ASL, ÍTM).",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Full name of the sign language."
+        },
+        "code": {
+          "type": "string",
+          "description": "ISO-like code for the sign language."
+        },
+        "region": {
+          "type": "string",
+          "description": "Geographic region where it is used."
+        }
+      },
+      "required": ["name", "code"]
+    },
+    "Sign": {
+      "title": "Sign",
+      "description": "A specific sign concept within a language.",
+      "type": "object",
+      "properties": {
+        "gloss": {
+          "type": "string",
+          "description": "The gloss representation (e.g., 'HELLO')."
+        },
+        "videoUrl": {
+          "type": "string",
+          "description": "URL to a video clip of the sign."
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "URL to a static image of the sign."
+        },
+        "description": {
+          "type": "string",
+          "description": "Text description of how to perform the sign."
+        },
+        "dialect": {
+          "type": "string",
+          "description": "Specific dialect or regional variation (e.g., 'Northeast', 'Southern')."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["verified", "pending", "rejected"]
+        }
+      },
+      "required": ["gloss"]
+    },
+    "User": {
+      "title": "User",
+      "description": "Application user profile.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "preferredLanguage": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "admin"] }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Interaction": {
+      "title": "Interaction",
+      "description": "A single translation interaction for self-learning.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "type": { "type": "string", "enum": ["sign-to-voice", "voice-to-sign", "correction"] },
+        "input": { "type": "string", "description": "Base64 frame, audio snippet, or landmark data" },
+        "landmarks": { "type": "string", "description": "JSON string of extracted skeletal landmarks for training" },
+        "output": { "type": "string" },
+        "gloss": { "type": "string" },
+        "isCorrected": { "type": "boolean" },
+        "correction": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "metadata": {
+          "type": "object",
+          "properties": {
+            "signLanguage": { "type": "string" },
+            "spokenLanguage": { "type": "string" },
+            "confidence": { "type": "number" }
+          }
+        }
+      },
+      "required": ["userId", "type", "timestamp"]
+    },
+    "Correction": {
+      "title": "Correction",
+      "description": "A user-submitted correction for admin review.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "originalGloss": { "type": "string" },
+        "correctedGloss": { "type": "string" },
+        "videoUrl": { "type": "string", "description": "URL to the user's recorded sign video in Storage" },
+        "landmarks": { "type": "string", "description": "Extracted skeletal data for the correction" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "signLanguage": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["userId", "correctedGloss", "status", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/sign_languages/{langId}": {
+      "schema": "SignLanguage",
+      "description": "Collection of regional sign languages."
+    },
+    "/sign_languages/{langId}/signs/{signId}": {
+      "schema": "Sign",
+      "description": "Glossary of signs for a specific language."
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles."
+    },
+    "/interactions/{interactionId}": {
+      "schema": "Interaction",
+      "description": "Historical interactions for model improvement and self-learning."
+    },
+    "/corrections/{correctionId}": {
+      "schema": "Correction",
+      "description": "User-submitted corrections awaiting admin verification."
+    }
+  }
+}
