@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useGeminiLive } from '@/hooks/use-gemini-live';
 import { Camera, Mic, MicOff, Video, VideoOff, LogIn, Settings, MessageSquare, AlertCircle, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
-import { auth, db, storage, handleFirestoreError, OperationType } from '@/firebase';
+import { getClientAuth, db, storage, handleFirestoreError, OperationType } from '@/firebase';
 import { GoogleAuthProvider, signInWithPopup, onAuthStateChanged, User } from 'firebase/auth';
 import { doc, getDoc, setDoc, collection, addDoc, getDocs, getDocFromServer } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -283,6 +283,7 @@ export default function OmniBridge() {
   }, [isMicOn, setIsMuted]);
 
   useEffect(() => {
+    const auth = getClientAuth();
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       if (u) {
@@ -323,6 +324,7 @@ export default function OmniBridge() {
   };
 
   const handleLogin = async () => {
+    const auth = getClientAuth();
     const provider = new GoogleAuthProvider();
     await signInWithPopup(auth, provider);
   };

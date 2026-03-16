@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { db, auth } from '@/firebase';
+import { db, getClientAuth } from '@/firebase';
 import { collection, query, where, onSnapshot, doc, updateDoc, addDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
 import { Check, X, Shield, ArrowRight, Video, User, Clock, Database } from 'lucide-react';
@@ -27,6 +27,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const auth = getClientAuth();
     const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
       if (user) {
         // Simple admin check - in production, use custom claims or a dedicated users collection check
