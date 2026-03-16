@@ -283,6 +283,7 @@ export default function OmniBridge() {
   }, [isMicOn, setIsMuted]);
 
   useEffect(() => {
+    if (!auth) return;
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       if (u) {
@@ -323,6 +324,7 @@ export default function OmniBridge() {
   };
 
   const handleLogin = async () => {
+    if (!auth) return;
     const provider = new GoogleAuthProvider();
     await signInWithPopup(auth, provider);
   };

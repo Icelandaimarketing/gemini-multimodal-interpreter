@@ -27,6 +27,10 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!auth) {
+      setLoading(false);
+      return;
+    }
     const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
       if (user) {
         // Simple admin check - in production, use custom claims or a dedicated users collection check
