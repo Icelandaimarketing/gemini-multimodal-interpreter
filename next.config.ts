@@ -5,9 +5,7 @@ const nextConfig: NextConfig = {
   trailingSlash: true,
   poweredByHeader: false,
   output: 'standalone',
-  generateBuildId: async () => {
-    return 'omni-bridge-v16';
-  },
+  generateBuildId: async () => Date.now().toString(),
   images: {
     remotePatterns: [
       {

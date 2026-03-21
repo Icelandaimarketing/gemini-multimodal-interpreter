@@ -7,6 +7,7 @@ import { db } from '@/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 
 export function useGeminiLive() {
+  const MAX_RETRIES = 5;
   const [isConnected, setIsConnected] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [transcript, setTranscript] = useState('');
@@ -25,6 +26,9 @@ export function useGeminiLive() {
 
   const connect = useCallback(async (systemInstruction: string) => {
     systemInstructionRef.current = systemInstruction;
+    retryCountRef.current = 0;
+    setTranscript('');
+    setLastGloss('');
     const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
     if (!apiKey) {
       console.error("NEXT_PUBLIC_GEMINI_API_KEY is missing");
@@ -159,6 +163,12 @@ export function useGeminiLive() {
 
     const handleReconnect = () => {
       if (reconnectTimeoutRef.current) return;
+      if (retryCountRef.current >= MAX_RETRIES) {
+        console.error(`Gemini Live: Max retries (${MAX_RETRIES}) exceeded. Giving up.`);
+        setIsReconnecting(false);
+        setIsConnected(false);
+        return;
+      }
       
       setIsReconnecting(true);
       const delay = Math.min(1000 * Math.pow(2, retryCountRef.current), 30000);

@@ -1,25 +1,27 @@
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { Auth, getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import firebaseConfig from './firebase-applet-config.json';
 
-const firebaseApiKeyEncoded = process.env.NEXT_PUBLIC_FIREBASE_API_KEY_B64;
-
-if (!firebaseApiKeyEncoded) {
-  throw new Error('Missing NEXT_PUBLIC_FIREBASE_API_KEY_B64 environment variable.');
+function getFirebaseApiKey(): string {
+  const encoded = process.env.NEXT_PUBLIC_FIREBASE_API_KEY_B64;
+  if (!encoded) {
+    // During SSR/build the key may not be available yet — return empty string.
+    // The Firebase SDK will fail gracefully on individual operations.
+    if (typeof window === 'undefined') return '';
+    throw new Error('Missing NEXT_PUBLIC_FIREBASE_API_KEY_B64 environment variable.');
+  }
+  return typeof window === 'undefined'
+    ? Buffer.from(encoded, 'base64').toString('utf-8').trim()
+    : atob(encoded).trim();
 }
 
-const firebaseApiKey =
-  typeof window === 'undefined'
-    ? Buffer.from(firebaseApiKeyEncoded, 'base64').toString('utf-8').trim()
-    : atob(firebaseApiKeyEncoded).trim();
+// Singleton Firebase app
+const app = getApps().length
+  ? getApp()
+  : initializeApp({ ...firebaseConfig, apiKey: getFirebaseApiKey() });
 
-// Initialize Firebase SDK
-const app = initializeApp({
-  ...firebaseConfig,
-  apiKey: firebaseApiKey,
-});
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const storage = getStorage(app);
 
@@ -75,7 +77,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
       emailVerified: currentUser?.emailVerified,
       isAnonymous: currentUser?.isAnonymous,
       tenantId: currentUser?.tenantId,
-      providerInfo: currentUser?.providerData.map(provider => ({
+      providerInfo: currentUser?.providerData.map((provider: { providerId: string; displayName: string | null; email: string | null; photoURL: string | null }) => ({
         providerId: provider.providerId,
         displayName: provider.displayName,
         email: provider.email,

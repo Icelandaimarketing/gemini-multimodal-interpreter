@@ -1,19 +1,19 @@
 'use client';
 
 import Image from 'next/image';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useGeminiLive } from '@/hooks/use-gemini-live';
-import { Camera, Mic, MicOff, Video, VideoOff, LogIn, Settings, MessageSquare, AlertCircle, ArrowLeft } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, LogIn, Settings, AlertCircle, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { getClientAuth, db, storage, handleFirestoreError, OperationType } from '@/firebase';
 import { GoogleAuthProvider, signInWithPopup, onAuthStateChanged, User } from 'firebase/auth';
-import { doc, getDoc, setDoc, collection, addDoc, getDocs, getDocFromServer } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { doc, getDoc, setDoc, collection, addDoc, getDocFromServer } from 'firebase/firestore';
+import { ref as storageRefFn, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { motion, AnimatePresence } from 'motion/react';
 import { generateConceptIllustration, generateSignVideo } from '@/lib/ai-gen';
 import { initLandmarkers, extractLandmarks } from '@/lib/landmarks';
 import { GoogleGenAI, Type } from "@google/genai";
-import { Check, X, ThumbsUp, ThumbsDown, Send } from 'lucide-react';
+import { X, Send } from 'lucide-react';
 
 interface FeedItem {
   id: string;
@@ -22,6 +22,29 @@ interface FeedItem {
   gloss?: string;
   timestamp: number;
   isCorrected?: boolean;
+}
+
+interface UserPrefs {
+  uid: string;
+  displayName: string;
+  email: string;
+  preferredLanguage: string;
+  role: 'user' | 'admin';
+  dialect?: string;
+}
+
+interface LandmarkData {
+  pose: { x: number; y: number; z: number }[][] | null;
+  hands: { x: number; y: number; z: number }[][];
+  timestamp: number;
+}
+
+interface DeepAnalysisResult {
+  gloss: string;
+  translation: string;
+  confidence: number;
+  emotionalRegister?: string;
+  suggestedCorrections?: string[];
 }
 
 const SIGN_LANGUAGES = [
@@ -59,7 +82,7 @@ function ErrorDisplay({ error }: { error: string }) {
 
 export default function OmniBridge() {
   const [user, setUser] = useState<User | null>(null);
-  const [prefs, setPrefs] = useState<any>(null);
+  const [prefs, setPrefs] = useState<UserPrefs | null>(null);
   const [isCameraOn, setIsCameraOn] = useState(false);
   const [isMicOn, setIsMicOn] = useState(true);
   const [selectedLanguage, setSelectedLanguage] = useState('en-US');
@@ -74,8 +97,10 @@ export default function OmniBridge() {
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [systemError, setSystemError] = useState<string | null>(null);
-  const [currentLandmarks, setCurrentLandmarks] = useState<any>(null);
-  const [deepAnalysisResult, setDeepAnalysisResult] = useState<any>(null);
+  const [currentLandmarks, setCurrentLandmarks] = useState<LandmarkData | null>(null);
+  const [deepAnalysisResult, setDeepAnalysisResult] = useState<DeepAnalysisResult | null>(null);
+  const lastDeepAnalysisTimeRef = useRef(0);
+  const blobUrlsRef = useRef<string[]>([]);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -86,6 +111,19 @@ export default function OmniBridge() {
   // Initialize Landmarkers
   useEffect(() => {
     initLandmarkers().catch(err => console.error("Landmarker init failed:", err));
+  }, []);
+
+  // Cleanup blob URLs and camera stream on unmount
+  useEffect(() => {
+    const videoEl = videoRef.current;
+    return () => {
+      // Revoke all tracked blob URLs to prevent memory leaks
+      blobUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
+      blobUrlsRef.current = [];
+      // Stop camera stream if still running
+      const stream = videoEl?.srcObject as MediaStream | null;
+      stream?.getTracks().forEach(t => t.stop());
+    };
   }, []);
 
   // Auto-scroll feed
@@ -186,8 +224,8 @@ export default function OmniBridge() {
     try {
       let videoUrl = '';
       if (recordedBlob) {
-        const videoRef = ref(storage, `corrections/${user.uid}/${Date.now()}.webm`);
-        const uploadResult = await uploadBytes(videoRef, recordedBlob);
+        const correctionStorageRef = storageRefFn(storage, `corrections/${user.uid}/${Date.now()}.webm`);
+        const uploadResult = await uploadBytes(correctionStorageRef, recordedBlob);
         videoUrl = await getDownloadURL(uploadResult.ref);
       }
 
@@ -291,14 +329,14 @@ export default function OmniBridge() {
           const docRef = doc(db, 'users', u.uid);
           const snap = await getDoc(docRef);
           if (snap.exists()) {
-            setPrefs(snap.data());
+            setPrefs(snap.data() as UserPrefs);
           } else {
             const defaultUser = { 
               uid: u.uid, 
               displayName: u.displayName || 'User',
               email: u.email || '',
               preferredLanguage: 'en-US',
-              role: 'user' 
+              role: 'user' as const
             };
             await setDoc(docRef, defaultUser);
             setPrefs(defaultUser);
@@ -313,20 +351,38 @@ export default function OmniBridge() {
 
   const syncLibrary = async () => {
     try {
-      const res = await fetch('/api/admin/ingest', { method: 'POST' });
+      const auth = getClientAuth();
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) {
+        setSystemError('You must be logged in to sync the library.');
+        return;
+      }
+      const res = await fetch('/api/admin/ingest', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
       if (res.ok) {
         triggerHaptic('success');
-        alert("Library synced successfully with open-source datasets.");
+        alert('Library synced successfully with open-source datasets.');
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setSystemError(data.error || `Sync failed with status ${res.status}`);
       }
     } catch (err) {
-      console.error("Sync failed:", err);
+      console.error('Sync failed:', err);
+      setSystemError('Library sync failed. Please try again.');
     }
   };
 
   const handleLogin = async () => {
-    const auth = getClientAuth();
-    const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+    try {
+      const auth = getClientAuth();
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+    } catch (err) {
+      console.error('Login failed:', err);
+      setSystemError('Login failed. Please check your popup blocker and try again.');
+    }
   };
 
   const toggleCamera = async () => {
@@ -398,8 +454,11 @@ export default function OmniBridge() {
                 }
 
                 if (user) {
-                  // Deep Analysis Path
-                  if (isDeepAnalysis && isConnected) {
+                  // Deep Analysis Path — throttled to once per 5 seconds
+                  const now = Date.now();
+                  const DEEP_ANALYSIS_COOLDOWN_MS = 5000;
+                  if (isDeepAnalysis && isConnected && (now - lastDeepAnalysisTimeRef.current >= DEEP_ANALYSIS_COOLDOWN_MS)) {
+                    lastDeepAnalysisTimeRef.current = now;
                     try {
                       const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
                       if (!apiKey) throw new Error("API Key missing");
@@ -445,7 +504,7 @@ export default function OmniBridge() {
                         }
                       });
 
-                      const deepResult = JSON.parse(response.text || "{}");
+                      const deepResult: DeepAnalysisResult = JSON.parse(response.text || "{}");
                       setDeepAnalysisResult(deepResult);
                       if (deepResult.confidence > 0.7) {
                         setFeed(prev => [...prev, {
@@ -711,12 +770,12 @@ Your goal is to facilitate seamless communication between a Deaf person (using $
             <div className="bg-black/60 backdrop-blur-md p-3 rounded-sm border border-white/5 font-mono">
               <div className="flex justify-between items-center mb-2">
                 <span className="text-[8px] text-zinc-500 uppercase tracking-widest">Confidence</span>
-                <span className="text-[10px] text-emerald-500 font-bold">{(deepAnalysisResult?.confidence * 100 || 0).toFixed(1)}%</span>
+                <span className="text-[10px] text-emerald-500 font-bold">{((deepAnalysisResult?.confidence ?? 0) * 100).toFixed(1)}%</span>
               </div>
               <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
                 <motion.div 
                   initial={{ width: 0 }}
-                  animate={{ width: `${(deepAnalysisResult?.confidence * 100 || 0)}%` }}
+                  animate={{ width: `${((deepAnalysisResult?.confidence ?? 0) * 100)}%` }}
                   className="h-full bg-emerald-500"
                 />
               </div>
@@ -733,7 +792,7 @@ Your goal is to facilitate seamless communication between a Deaf person (using $
               <span className="text-[8px] text-zinc-500 uppercase tracking-widest block mb-1">Active Landmarks</span>
               <div className="flex gap-1 flex-wrap">
                 <div className={`w-2 h-2 rounded-full ${currentLandmarks?.pose ? 'bg-emerald-500' : 'bg-white/10'}`} title="Pose" />
-                <div className={`w-2 h-2 rounded-full ${currentLandmarks?.hands?.length > 0 ? 'bg-indigo-500' : 'bg-white/10'}`} title="Hands" />
+                <div className={`w-2 h-2 rounded-full ${(currentLandmarks?.hands?.length ?? 0) > 0 ? 'bg-indigo-500' : 'bg-white/10'}`} title="Hands" />
               </div>
             </div>
           </div>

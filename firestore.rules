@@ -72,7 +72,7 @@ service cloud.firestore {
     }
 
     function isValidCorrection(data) {
-      return hasOnlyAllowedFields(['userId', 'originalGloss', 'correctedGloss', 'videoUrl', 'landmarks', 'status', 'signLanguage', 'timestamp']) &&
+      return hasOnlyAllowedFields(['userId', 'originalGloss', 'correctedGloss', 'videoUrl', 'landmarks', 'status', 'signLanguage', 'dialect', 'timestamp']) &&
              data.userId == request.auth.uid &&
              data.correctedGloss is string && data.correctedGloss.size() > 0 &&
              data.status == 'pending' &&
@@ -102,7 +102,11 @@ service cloud.firestore {
     }
 
     match /interactions/{interactionId} {
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      // Interactions have varying schemas per type (voice-to-sign, correction, landmark-capture)
+      // so we validate ownership but not strict field sets.
+      allow create: if isAuthenticated() &&
+                       request.resource.data.userId == request.auth.uid &&
+                       request.resource.data.timestamp is number;
       allow read, update: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
       allow delete: if isAdmin();
     }

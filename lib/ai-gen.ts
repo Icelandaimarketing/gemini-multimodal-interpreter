@@ -16,7 +16,7 @@ async function ensureApiKey() {
       await window.aistudio.openSelectKey();
     }
   }
-  return process.env.API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+  return process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 }
 
 export async function generateConceptIllustration(concept: string, signLanguage: string) {

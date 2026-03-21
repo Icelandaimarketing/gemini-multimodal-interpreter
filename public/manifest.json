@@ -1,21 +1,23 @@
 {
   "name": "Omni-Bridge",
   "short_name": "OmniBridge",
-  "description": "Professional Multimodal Translation Protocol",
-  "start_url": "/",
+  "description": "Real-time multimodal sign language interpreter powered by Gemini",
+  "start_url": "/bridge",
   "display": "standalone",
-  "background_color": "#151619",
-  "theme_color": "#10B981",
+  "background_color": "#0a0a0a",
+  "theme_color": "#10b981",
   "icons": [
     {
-      "src": "https://picsum.photos/seed/omni192/192/192",
+      "src": "/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
-      "src": "https://picsum.photos/seed/omni512/512/512",
+      "src": "/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }

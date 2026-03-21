@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { db, getClientAuth } from '@/firebase';
-import { collection, query, where, onSnapshot, doc, updateDoc, addDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, addDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
 import { Check, X, Shield, ArrowRight, Video, User, Clock, Database } from 'lucide-react';
 import Image from 'next/image';
@@ -30,19 +30,26 @@ export default function AdminDashboard() {
     const auth = getClientAuth();
     const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
       if (user) {
-        // Simple admin check - in production, use custom claims or a dedicated users collection check
-        const isAdminUser = user.email === 'deddi83@gmail.com';
-        setIsAdmin(isAdminUser);
-        
-        if (isAdminUser) {
-          const q = query(collection(db, 'corrections'), where('status', '==', 'pending'));
-          const unsubscribeDocs = onSnapshot(q, (snapshot) => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Correction));
-            setCorrections(data.sort((a, b) => b.timestamp - a.timestamp));
+        try {
+          // Check admin status via Firestore role field
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          const isAdminUser = userDoc.exists() && userDoc.data()?.role === 'admin';
+          setIsAdmin(isAdminUser);
+
+          if (isAdminUser) {
+            const q = query(collection(db, 'corrections'), where('status', '==', 'pending'));
+            const unsubscribeDocs = onSnapshot(q, (snapshot) => {
+              const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Correction));
+              setCorrections(data.sort((a, b) => b.timestamp - a.timestamp));
+              setLoading(false);
+            });
+            return () => unsubscribeDocs();
+          } else {
             setLoading(false);
-          });
-          return () => unsubscribeDocs();
-        } else {
+          }
+        } catch (error) {
+          console.error('Admin check failed:', error);
+          setIsAdmin(false);
           setLoading(false);
         }
       } else {

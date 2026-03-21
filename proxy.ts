@@ -1,17 +1,15 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import type { NextProxy, ProxyConfig } from 'next/server';
 
-export const proxy: NextProxy = function (request: NextRequest) {
+export function proxy(request: NextRequest) {
   const response = NextResponse.next();
 
-  // Add security and proxy headers
-  response.headers.set('X-Frame-Options', 'ALLOWALL');
-  response.headers.set('Access-Control-Allow-Origin', '*');
-  response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-  
-  // Force HTTPS if the proxy didn't
+  // Security headers
+  response.headers.set('X-Frame-Options', 'DENY');
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+  // Force HTTPS if behind a reverse proxy that terminates TLS
   const proto = request.headers.get('x-forwarded-proto');
   if (proto === 'http') {
     const url = request.nextUrl.clone();
@@ -19,25 +17,32 @@ export const proxy: NextProxy = function (request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Disable caching for main routes to avoid stale chunk issues
-  if (request.nextUrl.pathname === '/' || request.nextUrl.pathname === '/bridge/' || !request.nextUrl.pathname.includes('.')) {
-    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  // Disable caching for HTML pages to avoid stale chunk issues
+  const isHtmlRoute =
+    request.nextUrl.pathname === '/' ||
+    request.nextUrl.pathname === '/bridge/' ||
+    !request.nextUrl.pathname.includes('.');
+  if (isHtmlRoute) {
+    response.headers.set(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate'
+    );
     response.headers.set('Pragma', 'no-cache');
     response.headers.set('Expires', '0');
     response.headers.set('Surrogate-Control', 'no-store');
   }
 
   return response;
-};
+}
 
-export const config: ProxyConfig = {
+export const config = {
   matcher: [
     /*
-     * Match all request paths except for the ones starting with:
-     * - api (API routes)
+     * Match all request paths except:
+     * - api (API routes handle their own headers)
      * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
+     * - _next/image (image optimization)
+     * - favicon.ico (favicon)
      */
     '/((?!api|_next/static|_next/image|favicon.ico).*)',
   ],
